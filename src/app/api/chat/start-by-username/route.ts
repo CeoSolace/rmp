@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { account } from "@/src/lib/appwrite/client";
+import { account } from "@/lib/appwrite/client";
 import {
   findProfileByUsername,
   createOrGetDirectConversation,
-} from "@/src/lib/chat/startConversation";
+} from "@/lib/chat/startConversation";
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,10 +21,7 @@ export async function POST(req: NextRequest) {
     const targetProfile = await findProfileByUsername(rawUsername);
 
     if (!targetProfile) {
-      return NextResponse.json(
-        { error: "User not found." },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "User not found." }, { status: 404 });
     }
 
     const conversation = await createOrGetDirectConversation(
