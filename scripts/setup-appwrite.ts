@@ -1,4 +1,4 @@
-import { Client, Databases, ID, Permission, Role } from "node-appwrite";
+import { Client, Databases, Permission, Role } from "node-appwrite";
 
 const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT;
 const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
@@ -21,75 +21,114 @@ const client = new Client()
 
 const databases = new Databases(client);
 
-async function existsCollection(collectionId: string) {
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isNotFoundError(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "number"
+  ) {
+    return (error as { code: number }).code === 404;
+  }
+
+  return false;
+}
+
+async function ensureDatabase() {
+  try {
+    await databases.get({ databaseId });
+    console.log(`✓ Database exists: ${databaseId}`);
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
+
+    console.log(`Creating database: ${databaseId}`);
+    await databases.create({
+      databaseId,
+      name: "RampChat Main",
+    });
+    console.log(`✓ Created database: ${databaseId}`);
+  }
+}
+
+async function ensureCollection(
+  collectionId: string,
+  name: string,
+  documentSecurity = false
+) {
   try {
     await databases.getCollection({
       databaseId,
       collectionId,
     });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function existsAttribute(collectionId: string, key: string) {
-  try {
-    const result = await databases.listAttributes({
-      databaseId,
-      collectionId,
-    });
-
-    return result.attributes.some((attr: any) => attr.key === key);
-  } catch {
-    return false;
-  }
-}
-
-async function existsIndex(collectionId: string, key: string) {
-  try {
-    await databases.getIndex({
-      databaseId,
-      collectionId,
-      key,
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function createCollectionIfMissing(
-  collectionId: string,
-  name: string,
-  documentSecurity = false
-) {
-  const exists = await existsCollection(collectionId);
-
-  if (exists) {
     console.log(`✓ Collection exists: ${collectionId}`);
-    return;
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
+
+    console.log(`Creating collection: ${collectionId}`);
+    await databases.createCollection({
+      databaseId,
+      collectionId,
+      name,
+      permissions: [
+        Permission.read(Role.any()),
+        Permission.create(Role.users()),
+        Permission.update(Role.users()),
+        Permission.delete(Role.users()),
+      ],
+      documentSecurity,
+    });
+    console.log(`✓ Created collection: ${collectionId}`);
   }
+}
 
-  console.log(`Creating collection: ${collectionId}`);
+type AppwriteAttribute = {
+  key: string;
+  status?: string;
+};
 
-  await databases.createCollection({
+async function listAllAttributes(collectionId: string): Promise<AppwriteAttribute[]> {
+  const result = await databases.listAttributes({
     databaseId,
     collectionId,
-    name,
-    documentSecurity,
-    permissions: [
-      Permission.read(Role.any()),
-      Permission.create(Role.users()),
-      Permission.update(Role.users()),
-      Permission.delete(Role.users()),
-    ],
   });
 
-  console.log(`✓ Created collection: ${collectionId}`);
+  return (result.attributes ?? []) as AppwriteAttribute[];
 }
 
-async function createStringAttributeIfMissing(
+async function hasAttribute(collectionId: string, key: string) {
+  const attributes = await listAllAttributes(collectionId);
+  return attributes.some((attr) => attr.key === key);
+}
+
+async function waitForAttributes(collectionId: string, keys: string[]) {
+  const timeoutMs = 120_000;
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const attributes = await listAllAttributes(collectionId);
+
+    const ready = keys.every((key) =>
+      attributes.some((attr) => attr.key === key && attr.status === "available")
+    );
+
+    if (ready) {
+      console.log(`✓ Attributes ready for ${collectionId}: ${keys.join(", ")}`);
+      return;
+    }
+
+    await sleep(2000);
+  }
+
+  throw new Error(
+    `Timed out waiting for attributes in ${collectionId}: ${keys.join(", ")}`
+  );
+}
+
+async function ensureStringAttribute(
   collectionId: string,
   key: string,
   size: number,
@@ -97,15 +136,12 @@ async function createStringAttributeIfMissing(
   array = false,
   defaultValue?: string
 ) {
-  const exists = await existsAttribute(collectionId, key);
-
-  if (exists) {
+  if (await hasAttribute(collectionId, key)) {
     console.log(`✓ Attribute exists: ${collectionId}.${key}`);
     return;
   }
 
   console.log(`Creating string attribute: ${collectionId}.${key}`);
-
   await databases.createStringAttribute({
     databaseId,
     collectionId,
@@ -115,46 +151,55 @@ async function createStringAttributeIfMissing(
     array,
     default: defaultValue,
   });
-
   console.log(`✓ Created attribute: ${collectionId}.${key}`);
 }
 
-async function createDatetimeAttributeIfMissing(
+async function ensureDatetimeAttribute(
   collectionId: string,
   key: string,
-  required: boolean,
-  defaultValue?: string
+  required: boolean
 ) {
-  const exists = await existsAttribute(collectionId, key);
-
-  if (exists) {
+  if (await hasAttribute(collectionId, key)) {
     console.log(`✓ Attribute exists: ${collectionId}.${key}`);
     return;
   }
 
   console.log(`Creating datetime attribute: ${collectionId}.${key}`);
-
   await databases.createDatetimeAttribute({
     databaseId,
     collectionId,
     key,
     required,
-    default: defaultValue,
   });
-
   console.log(`✓ Created attribute: ${collectionId}.${key}`);
 }
 
-async function createIndexIfMissing(
+type AppwriteIndex = {
+  key: string;
+};
+
+async function listAllIndexes(collectionId: string): Promise<AppwriteIndex[]> {
+  const result = await databases.listIndexes({
+    databaseId,
+    collectionId,
+  });
+
+  return (result.indexes ?? []) as AppwriteIndex[];
+}
+
+async function hasIndex(collectionId: string, key: string) {
+  const indexes = await listAllIndexes(collectionId);
+  return indexes.some((index) => index.key === key);
+}
+
+async function ensureIndex(
   collectionId: string,
   key: string,
   type: "key" | "fulltext" | "unique",
   attributes: string[],
   orders?: ("ASC" | "DESC")[]
 ) {
-  const exists = await existsIndex(collectionId, key);
-
-  if (exists) {
+  if (await hasIndex(collectionId, key)) {
     console.log(`✓ Index exists: ${collectionId}.${key}`);
     return;
   }
@@ -173,44 +218,19 @@ async function createIndexIfMissing(
   console.log(`✓ Created index: ${collectionId}.${key}`);
 }
 
-async function waitForAttributes(collectionId: string, keys: string[]) {
-  console.log(`Waiting for attributes in ${collectionId}: ${keys.join(", ")}`);
-
-  const timeoutMs = 60_000;
-  const start = Date.now();
-
-  while (Date.now() - start < timeoutMs) {
-    const result = await databases.listAttributes({
-      databaseId,
-      collectionId,
-    });
-
-    const ready = keys.every((key) =>
-      result.attributes.some((attr: any) => attr.key === key && attr.status === "available")
-    );
-
-    if (ready) {
-      console.log(`✓ Attributes ready in ${collectionId}`);
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-  }
-
-  throw new Error(`Timed out waiting for attributes in ${collectionId}`);
-}
-
 async function main() {
   console.log("Starting Appwrite setup...");
 
-  await createCollectionIfMissing(profilesId, "Profiles");
-  await createCollectionIfMissing(conversationsId, "Conversations");
-  await createCollectionIfMissing(messagesId, "Messages");
+  await ensureDatabase();
 
-  await createStringAttributeIfMissing(profilesId, "userId", 64, true);
-  await createStringAttributeIfMissing(profilesId, "username", 32, true);
-  await createStringAttributeIfMissing(profilesId, "usernameLower", 32, true);
-  await createStringAttributeIfMissing(profilesId, "displayName", 64, false, false, "");
+  await ensureCollection(profilesId, "Profiles");
+  await ensureCollection(conversationsId, "Conversations");
+  await ensureCollection(messagesId, "Messages");
+
+  await ensureStringAttribute(profilesId, "userId", 64, true);
+  await ensureStringAttribute(profilesId, "username", 32, true);
+  await ensureStringAttribute(profilesId, "usernameLower", 32, true);
+  await ensureStringAttribute(profilesId, "displayName", 64, false, false, "");
 
   await waitForAttributes(profilesId, [
     "userId",
@@ -219,14 +239,19 @@ async function main() {
     "displayName",
   ]);
 
-  await createIndexIfMissing(profilesId, "userId_unique", "unique", ["userId"]);
-  await createIndexIfMissing(profilesId, "username_unique", "unique", ["username"]);
-  await createIndexIfMissing(profilesId, "usernameLower_search", "fulltext", ["usernameLower"]);
+  await ensureIndex(profilesId, "userId_unique", "unique", ["userId"]);
+  await ensureIndex(profilesId, "username_unique", "unique", ["username"]);
+  await ensureIndex(
+    profilesId,
+    "usernameLower_fulltext",
+    "fulltext",
+    ["usernameLower"]
+  );
 
-  await createStringAttributeIfMissing(conversationsId, "type", 16, true);
-  await createStringAttributeIfMissing(conversationsId, "participantIds", 64, true, true);
-  await createStringAttributeIfMissing(conversationsId, "participantKey", 128, true);
-  await createStringAttributeIfMissing(
+  await ensureStringAttribute(conversationsId, "type", 16, true);
+  await ensureStringAttribute(conversationsId, "participantIds", 64, true, true);
+  await ensureStringAttribute(conversationsId, "participantKey", 128, true);
+  await ensureStringAttribute(
     conversationsId,
     "lastMessageText",
     2000,
@@ -234,9 +259,9 @@ async function main() {
     false,
     ""
   );
-  await createDatetimeAttributeIfMissing(conversationsId, "lastMessageAt", true);
-  await createDatetimeAttributeIfMissing(conversationsId, "createdAt", true);
-  await createStringAttributeIfMissing(conversationsId, "createdBy", 64, true);
+  await ensureDatetimeAttribute(conversationsId, "lastMessageAt", true);
+  await ensureDatetimeAttribute(conversationsId, "createdAt", true);
+  await ensureStringAttribute(conversationsId, "createdBy", 64, true);
 
   await waitForAttributes(conversationsId, [
     "type",
@@ -248,19 +273,19 @@ async function main() {
     "createdBy",
   ]);
 
-  await createIndexIfMissing(
+  await ensureIndex(
     conversationsId,
     "participantKey_unique",
     "unique",
     ["participantKey"]
   );
-  await createIndexIfMissing(
+  await ensureIndex(
     conversationsId,
     "participantIds_key",
     "key",
     ["participantIds"]
   );
-  await createIndexIfMissing(
+  await ensureIndex(
     conversationsId,
     "lastMessageAt_key",
     "key",
@@ -268,11 +293,11 @@ async function main() {
     ["DESC"]
   );
 
-  await createStringAttributeIfMissing(messagesId, "conversationId", 64, true);
-  await createStringAttributeIfMissing(messagesId, "senderId", 64, true);
-  await createStringAttributeIfMissing(messagesId, "content", 5000, true);
-  await createDatetimeAttributeIfMissing(messagesId, "createdAt", true);
-  await createStringAttributeIfMissing(messagesId, "messageType", 16, true);
+  await ensureStringAttribute(messagesId, "conversationId", 64, true);
+  await ensureStringAttribute(messagesId, "senderId", 64, true);
+  await ensureStringAttribute(messagesId, "content", 5000, true);
+  await ensureDatetimeAttribute(messagesId, "createdAt", true);
+  await ensureStringAttribute(messagesId, "messageType", 16, true);
 
   await waitForAttributes(messagesId, [
     "conversationId",
@@ -282,8 +307,8 @@ async function main() {
     "messageType",
   ]);
 
-  await createIndexIfMissing(messagesId, "conversationId_key", "key", ["conversationId"]);
-  await createIndexIfMissing(messagesId, "createdAt_key", "key", ["createdAt"], ["ASC"]);
+  await ensureIndex(messagesId, "conversationId_key", "key", ["conversationId"]);
+  await ensureIndex(messagesId, "createdAt_key", "key", ["createdAt"], ["ASC"]);
 
   console.log("✅ Appwrite setup complete.");
 }
