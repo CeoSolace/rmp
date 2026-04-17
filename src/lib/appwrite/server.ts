@@ -1,16 +1,18 @@
-import { Client, Databases, ID, Query, Account } from 'appwrite';
+import { Client, Account, Databases, Users } from "appwrite";
 
-// Server-side Appwrite client. This file should only be imported from
-// server-side code such as API routes or server actions. It reads
-// environment variables that are never exposed to the client. In this
-// starter we deliberately avoid including an API key to demonstrate
-// usage without elevated privileges.
+const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT;
+const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
+const apiKey = process.env.APPWRITE_API_KEY;
 
-const client = new Client();
-client
-  .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT!)
-  .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID!);
+if (!endpoint) throw new Error("NEXT_PUBLIC_APPWRITE_ENDPOINT is missing");
+if (!projectId) throw new Error("NEXT_PUBLIC_APPWRITE_PROJECT_ID is missing");
+if (!apiKey) throw new Error("APPWRITE_API_KEY is missing");
 
-export const serverDatabases = new Databases(client);
-export const serverAccount = new Account(client);
-export { ID, Query };
+const adminClient = new Client()
+  .setEndpoint(endpoint)
+  .setProject(projectId)
+  .setKey(apiKey);
+
+export const adminAccount = new Account(adminClient);
+export const adminDatabases = new Databases(adminClient);
+export const adminUsers = new Users(adminClient);
