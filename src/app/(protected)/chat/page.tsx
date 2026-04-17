@@ -66,6 +66,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (!currentConversation) return;
 
+    const activeConversation = currentConversation;
     let unsubscribe: (() => void) | undefined;
 
     async function loadMessagesAndSubscribe() {
@@ -74,7 +75,7 @@ export default function ChatPage() {
           DATABASE_ID,
           MESSAGES_COLLECTION_ID,
           [
-            Query.equal("conversationId", currentConversation.$id),
+            Query.equal("conversationId", activeConversation.$id),
             Query.orderAsc("createdAt"),
             Query.limit(100),
           ]
@@ -87,7 +88,7 @@ export default function ChatPage() {
           (payload: { payload?: Models.Document }) => {
             const doc = payload?.payload;
 
-            if (doc && doc.conversationId === currentConversation.$id) {
+            if (doc && doc.conversationId === activeConversation.$id) {
               setMessages((prev: Models.Document[]) => {
                 const alreadyExists = prev.some(
                   (message: Models.Document) => message.$id === doc.$id
@@ -113,6 +114,7 @@ export default function ChatPage() {
   async function sendMessage() {
     if (!messageText.trim() || !currentConversation || !user) return;
 
+    const activeConversation = currentConversation;
     const content = messageText.trim();
     setMessageText("");
 
@@ -124,7 +126,7 @@ export default function ChatPage() {
         MESSAGES_COLLECTION_ID,
         ID.unique(),
         {
-          conversationId: currentConversation.$id,
+          conversationId: activeConversation.$id,
           senderId: user.$id,
           content,
           createdAt: now,
@@ -135,7 +137,7 @@ export default function ChatPage() {
       await databases.updateDocument(
         DATABASE_ID,
         CONVERSATIONS_COLLECTION_ID,
-        currentConversation.$id,
+        activeConversation.$id,
         {
           lastMessageText: content,
           lastMessageAt: now,
@@ -145,7 +147,7 @@ export default function ChatPage() {
       setConversations((prev: Models.Document[]) =>
         prev
           .map((conversation: Models.Document) =>
-            conversation.$id === currentConversation.$id
+            conversation.$id === activeConversation.$id
               ? {
                   ...conversation,
                   lastMessageText: content,
