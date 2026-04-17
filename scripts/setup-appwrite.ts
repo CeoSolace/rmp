@@ -318,12 +318,6 @@ async function main() {
   );
   await ensureIndex(
     conversationsId,
-    "participantIds_key",
-    "key",
-    ["participantIds"]
-  );
-  await ensureIndex(
-    conversationsId,
     "lastMessageAt_key",
     "key",
     ["lastMessageAt"],
