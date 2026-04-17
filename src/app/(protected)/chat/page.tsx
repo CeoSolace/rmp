@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   account,
   databases,
   ID,
   Query,
-  Realtime,
   type Models,
   appwriteClient,
 } from "../../../lib/appwrite/client";
@@ -22,7 +21,6 @@ import { normalizeUsername } from "../../../lib/validators";
 
 export default function ChatPage() {
   const router = useRouter();
-  const realtime = useMemo(() => new Realtime(appwriteClient), []);
 
   const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
   const [conversations, setConversations] = useState<Models.Document[]>([]);
@@ -85,16 +83,16 @@ export default function ChatPage() {
 
         setMessages(res.documents);
 
-        unsubscribe = realtime.subscribe(
+        unsubscribe = appwriteClient.subscribe(
           `databases.${DATABASE_ID}.collections.${MESSAGES_COLLECTION_ID}.documents`,
-          (response: { payload?: Models.Document; events?: string[] }) => {
-            const doc = response?.payload;
+          (response: { payload?: unknown; events?: string[] }) => {
+            const doc = response?.payload as Models.Document | undefined;
             const events = response?.events ?? [];
 
             const isCreateEvent = events.some((event) => event.includes(".create"));
-            if (!isCreateEvent) return;
+            if (!isCreateEvent || !doc) return;
 
-            if (doc && doc.conversationId === activeConversation.$id) {
+            if (doc.conversationId === activeConversation.$id) {
               setMessages((prev: Models.Document[]) => {
                 const alreadyExists = prev.some(
                   (message: Models.Document) => message.$id === doc.$id
@@ -120,7 +118,7 @@ export default function ChatPage() {
     return () => {
       unsubscribe?.();
     };
-  }, [currentConversation, realtime]);
+  }, [currentConversation]);
 
   async function sendMessage() {
     if (!messageText.trim() || !currentConversation || !user) return;
