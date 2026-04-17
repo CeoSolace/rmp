@@ -1,85 +1,94 @@
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { account, databases, ID, Query } from '@/lib/appwrite/client';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { account, databases, ID, Query } from "../../../lib/appwrite/client";
 import {
   validateEmail,
   validatePassword,
   validateUsername,
   normalizeUsername,
-} from '@/lib/validators';
+} from "../../../lib/validators";
 import {
   DATABASE_ID,
   PROFILES_COLLECTION_ID,
   RESERVED_USERNAMES,
-} from '@/lib/constants';
+} from "../../../lib/constants";
 
-/**
- * Authentication page for RampChat.
- *
- * This component toggles between login and signup modes. During signup
- * an Appwrite account is created, the user is logged in, and a
- * profile document is created in the `rc_profiles` collection. Usernames
- * are validated and normalised to lowercase to ensure uniqueness.
- */
 export default function AuthPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+
+  const [mode, setMode] = useState<"login" | "signup">("login");
   const [form, setForm] = useState({
-    email: '',
-    password: '',
-    username: '',
-    displayName: '',
+    email: "",
+    password: "",
+    username: "",
+    displayName: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleChange(
+    e: React.ChangeEvent<HTMLInputElement>
+  ) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setLoading(true);
+
     try {
       const email = form.email.trim();
       const password = form.password;
-      if (!validateEmail(email)) throw new Error('Please enter a valid email.');
-      if (!validatePassword(password)) throw new Error('Password must be at least 6 characters.');
-      if (mode === 'signup') {
+
+      if (!validateEmail(email)) {
+        throw new Error("Please enter a valid email.");
+      }
+
+      if (!validatePassword(password)) {
+        throw new Error("Password must be at least 6 characters.");
+      }
+
+      if (mode === "signup") {
         const username = form.username.trim();
+
         if (!validateUsername(username)) {
-          throw new Error('Username must be 3–20 characters and contain only letters, numbers, underscores or periods.');
+          throw new Error(
+            "Username must be 3 to 20 characters and only use letters, numbers, underscores, or periods."
+          );
         }
+
         const usernameLower = normalizeUsername(username);
-        if (RESERVED_USERNAMES.includes(usernameLower)) {
-          throw new Error('This username is reserved.');
+
+        if (RESERVED_USERNAMES.includes(usernameLower as any)) {
+          throw new Error("This username is reserved.");
         }
-        // Check if username already exists
+
         const existing = await databases.listDocuments(
           DATABASE_ID,
           PROFILES_COLLECTION_ID,
-          [Query.equal('usernameLower', usernameLower), Query.limit(1)],
+          [Query.equal("usernameLower", usernameLower), Query.limit(1)]
         );
+
         if (existing.total > 0) {
-          throw new Error('Username already in use.');
+          throw new Error("Username already in use.");
         }
-        // Create user
+
         const userId = ID.unique();
+
         await account.create(userId, email, password);
         await account.createEmailSession(email, password);
-        // Create profile document
+
         const displayName = form.displayName.trim() || username;
         const now = new Date().toISOString();
-        // Determine if this user should be marked as the owner. Compare
-        // the email used during signup against the configured owner
-        // email. Only public variables can be accessed on the client.
+
         const isOwner =
           email.toLowerCase() ===
-          (process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL)?.toLowerCase();
+          (process.env.NEXT_PUBLIC_OWNER_EMAIL || "").toLowerCase();
+
         await databases.createDocument(
           DATABASE_ID,
           PROFILES_COLLECTION_ID,
@@ -89,20 +98,20 @@ export default function AuthPage() {
             username,
             usernameLower,
             displayName,
-            bio: '',
-            avatarUrl: '',
+            bio: "",
+            avatarUrl: "",
             isOwner,
             createdAt: now,
             updatedAt: now,
-          },
+          }
         );
       } else {
-        // Login mode
         await account.createEmailSession(email, password);
       }
-      router.push('/chat');
+
+      router.push("/chat");
     } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+      setError(err?.message || "Authentication failed.");
     } finally {
       setLoading(false);
     }
@@ -112,12 +121,18 @@ export default function AuthPage() {
     <div className="flex items-center justify-center min-h-screen p-4">
       <div className="w-full max-w-md bg-gray-800 rounded-lg p-6 shadow-md">
         <h1 className="text-2xl font-bold mb-4 text-center">
-          {mode === 'login' ? 'Login to RampChat' : 'Create your RampChat account'}
+          {mode === "login"
+            ? "Login to RampChat"
+            : "Create your RampChat account"}
         </h1>
+
         {error && <p className="text-red-500 mb-3 text-sm">{error}</p>}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium">Email</label>
+            <label htmlFor="email" className="block text-sm font-medium">
+              Email
+            </label>
             <input
               type="email"
               id="email"
@@ -128,10 +143,13 @@ export default function AuthPage() {
               required
             />
           </div>
-          {mode === 'signup' && (
+
+          {mode === "signup" && (
             <>
               <div>
-                <label htmlFor="username" className="block text-sm font-medium">Username</label>
+                <label htmlFor="username" className="block text-sm font-medium">
+                  Username
+                </label>
                 <input
                   type="text"
                   id="username"
@@ -142,8 +160,14 @@ export default function AuthPage() {
                   required
                 />
               </div>
+
               <div>
-                <label htmlFor="displayName" className="block text-sm font-medium">Display Name (optional)</label>
+                <label
+                  htmlFor="displayName"
+                  className="block text-sm font-medium"
+                >
+                  Display Name (optional)
+                </label>
                 <input
                   type="text"
                   id="displayName"
@@ -155,8 +179,11 @@ export default function AuthPage() {
               </div>
             </>
           )}
+
           <div>
-            <label htmlFor="password" className="block text-sm font-medium">Password</label>
+            <label htmlFor="password" className="block text-sm font-medium">
+              Password
+            </label>
             <input
               type="password"
               id="password"
@@ -167,31 +194,35 @@ export default function AuthPage() {
               required
             />
           </div>
+
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white py-2 rounded"
           >
-            {loading ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Sign up'}
+            {loading ? "Please wait…" : mode === "login" ? "Log in" : "Sign up"}
           </button>
         </form>
+
         <p className="text-center text-sm mt-4">
-          {mode === 'login' ? (
+          {mode === "login" ? (
             <>
-              Don’t have an account?{' '}
+              Don’t have an account?{" "}
               <button
+                type="button"
                 className="underline text-indigo-400"
-                onClick={() => setMode('signup')}
+                onClick={() => setMode("signup")}
               >
                 Sign up
               </button>
             </>
           ) : (
             <>
-              Already have an account?{' '}
+              Already have an account?{" "}
               <button
+                type="button"
                 className="underline text-indigo-400"
-                onClick={() => setMode('login')}
+                onClick={() => setMode("login")}
               >
                 Log in
               </button>
