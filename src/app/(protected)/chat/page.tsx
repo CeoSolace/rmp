@@ -42,7 +42,7 @@ export default function ChatPage() {
       }
     }
 
-    init();
+    void init();
   }, [router]);
 
   async function loadConversations(userId: string) {
@@ -84,12 +84,14 @@ export default function ChatPage() {
 
         unsubscribe = appwriteClient.subscribe(
           `databases.${DATABASE_ID}.collections.${MESSAGES_COLLECTION_ID}.documents`,
-          (payload: any) => {
+          (payload: { payload?: Models.Document }) => {
             const doc = payload?.payload;
 
             if (doc && doc.conversationId === currentConversation.$id) {
-              setMessages((prev) => {
-                const alreadyExists = prev.some((message) => message.$id === doc.$id);
+              setMessages((prev: Models.Document[]) => {
+                const alreadyExists = prev.some(
+                  (message: Models.Document) => message.$id === doc.$id
+                );
                 if (alreadyExists) return prev;
                 return [...prev, doc];
               });
@@ -101,7 +103,7 @@ export default function ChatPage() {
       }
     }
 
-    loadMessagesAndSubscribe();
+    void loadMessagesAndSubscribe();
 
     return () => {
       if (unsubscribe) unsubscribe();
@@ -140,9 +142,9 @@ export default function ChatPage() {
         }
       );
 
-      setConversations((prev) =>
+      setConversations((prev: Models.Document[]) =>
         prev
-          .map((conversation) =>
+          .map((conversation: Models.Document) =>
             conversation.$id === currentConversation.$id
               ? {
                   ...conversation,
@@ -152,7 +154,7 @@ export default function ChatPage() {
               : conversation
           )
           .sort(
-            (a, b) =>
+            (a: Models.Document, b: Models.Document) =>
               new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
           )
       );
@@ -176,7 +178,10 @@ export default function ChatPage() {
         [Query.search("usernameLower", q), Query.limit(5)]
       );
 
-      const filtered = res.documents.filter((profile) => profile.userId !== user.$id);
+      const filtered = res.documents.filter(
+        (profile: Models.Document) => profile.userId !== user.$id
+      );
+
       setSearchResults(filtered);
     } catch (error) {
       console.error("Search failed", error);
@@ -221,8 +226,8 @@ export default function ChatPage() {
 
       setCurrentConversation(conversation);
 
-      setConversations((prev) => {
-        const exists = prev.some((item) => item.$id === conversation.$id);
+      setConversations((prev: Models.Document[]) => {
+        const exists = prev.some((item: Models.Document) => item.$id === conversation.$id);
         if (exists) return prev;
         return [conversation, ...prev];
       });
@@ -245,8 +250,8 @@ export default function ChatPage() {
               type="text"
               placeholder="Search users…"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                 if (e.key === "Enter") {
                   void performSearch();
                 }
@@ -257,7 +262,7 @@ export default function ChatPage() {
 
           {searchResults.length > 0 && (
             <div className="mt-2 max-h-40 overflow-y-auto">
-              {searchResults.map((result) => (
+              {searchResults.map((result: Models.Document) => (
                 <button
                   key={result.$id}
                   onClick={() => void openDmForUser(result)}
@@ -280,7 +285,7 @@ export default function ChatPage() {
             <p className="p-4 text-sm text-gray-400">No conversations yet.</p>
           ) : (
             <ul>
-              {conversations.map((conversation) => (
+              {conversations.map((conversation: Models.Document) => (
                 <li key={conversation.$id}>
                   <button
                     onClick={() => setCurrentConversation(conversation)}
@@ -308,7 +313,7 @@ export default function ChatPage() {
         {currentConversation ? (
           <>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {messages.map((message) => (
+              {messages.map((message: Models.Document) => (
                 <div
                   key={message.$id}
                   className={`max-w-md ${
@@ -335,8 +340,8 @@ export default function ChatPage() {
               <input
                 type="text"
                 value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                onKeyDown={(e) => {
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMessageText(e.target.value)}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                   if (e.key === "Enter") {
                     void sendMessage();
                   }
