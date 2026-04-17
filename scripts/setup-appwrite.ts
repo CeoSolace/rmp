@@ -79,16 +79,42 @@ async function ensureCollection(
   }
 }
 
-type AppwriteAttribute = {
+type NormalizedAttribute = {
   key: string;
   status?: string;
 };
 
 async function listAllAttributes(
   collectionId: string
-): Promise<AppwriteAttribute[]> {
+): Promise<NormalizedAttribute[]> {
   const result = await databases.listAttributes(databaseId, collectionId);
-  return (result.attributes ?? []) as AppwriteAttribute[];
+  const rawAttributes = result.attributes ?? [];
+
+  return rawAttributes
+    .map((attr): NormalizedAttribute | null => {
+      if (typeof attr === "string") {
+        return { key: attr };
+      }
+
+      if (
+        typeof attr === "object" &&
+        attr !== null &&
+        "key" in attr &&
+        typeof (attr as { key?: unknown }).key === "string"
+      ) {
+        return {
+          key: (attr as { key: string }).key,
+          status:
+            "status" in attr &&
+            typeof (attr as { status?: unknown }).status === "string"
+              ? (attr as { status?: string }).status
+              : undefined,
+        };
+      }
+
+      return null;
+    })
+    .filter((attr): attr is NormalizedAttribute => Boolean(attr && attr.key));
 }
 
 async function hasAttribute(collectionId: string, key: string) {
@@ -104,7 +130,9 @@ async function waitForAttributes(collectionId: string, keys: string[]) {
     const attributes = await listAllAttributes(collectionId);
 
     const ready = keys.every((key) =>
-      attributes.some((attr) => attr.key === key && attr.status === "available")
+      attributes.some(
+        (attr) => attr.key === key && (!attr.status || attr.status === "available")
+      )
     );
 
     if (ready) {
@@ -161,13 +189,32 @@ async function ensureDatetimeAttribute(
   console.log(`✓ Created attribute: ${collectionId}.${key}`);
 }
 
-type AppwriteIndex = {
+type NormalizedIndex = {
   key: string;
 };
 
-async function listAllIndexes(collectionId: string): Promise<AppwriteIndex[]> {
+async function listAllIndexes(collectionId: string): Promise<NormalizedIndex[]> {
   const result = await databases.listIndexes(databaseId, collectionId);
-  return (result.indexes ?? []) as AppwriteIndex[];
+  const rawIndexes = result.indexes ?? [];
+
+  return rawIndexes
+    .map((index): NormalizedIndex | null => {
+      if (typeof index === "string") {
+        return { key: index };
+      }
+
+      if (
+        typeof index === "object" &&
+        index !== null &&
+        "key" in index &&
+        typeof (index as { key?: unknown }).key === "string"
+      ) {
+        return { key: (index as { key: string }).key };
+      }
+
+      return null;
+    })
+    .filter((index): index is NormalizedIndex => Boolean(index && index.key));
 }
 
 async function hasIndex(collectionId: string, key: string) {
