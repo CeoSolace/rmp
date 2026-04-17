@@ -11,16 +11,9 @@ if (!projectId) {
   throw new Error("NEXT_PUBLIC_APPWRITE_PROJECT_ID is missing");
 }
 
-type RealtimeCapableClient = Client & {
-  subscribe: (
-    channels: string | string[],
-    callback: (response: { events?: string[]; payload?: unknown }) => void
-  ) => () => void;
-};
-
 const client = new Client().setEndpoint(endpoint).setProject(projectId);
 
-export const appwriteClient = client as RealtimeCapableClient;
+export const appwriteClient = client;
 export const account = new Account(client);
 export const databases = new Databases(client);
 
