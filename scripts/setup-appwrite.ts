@@ -1,4 +1,4 @@
-import { Client, Databases, Permission, Role } from "node-appwrite";
+import { Client, Databases, Permission, Role, IndexType } from "node-appwrite";
 
 const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT;
 const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
@@ -40,16 +40,13 @@ function isNotFoundError(error: unknown) {
 
 async function ensureDatabase() {
   try {
-    await databases.get({ databaseId });
+    await databases.get(databaseId);
     console.log(`✓ Database exists: ${databaseId}`);
   } catch (error) {
     if (!isNotFoundError(error)) throw error;
 
     console.log(`Creating database: ${databaseId}`);
-    await databases.create({
-      databaseId,
-      name: "RampChat Main",
-    });
+    await databases.create(databaseId, "RampChat Main");
     console.log(`✓ Created database: ${databaseId}`);
   }
 }
@@ -60,27 +57,24 @@ async function ensureCollection(
   documentSecurity = false
 ) {
   try {
-    await databases.getCollection({
-      databaseId,
-      collectionId,
-    });
+    await databases.getCollection(databaseId, collectionId);
     console.log(`✓ Collection exists: ${collectionId}`);
   } catch (error) {
     if (!isNotFoundError(error)) throw error;
 
     console.log(`Creating collection: ${collectionId}`);
-    await databases.createCollection({
+    await databases.createCollection(
       databaseId,
       collectionId,
       name,
-      permissions: [
+      [
         Permission.read(Role.any()),
         Permission.create(Role.users()),
         Permission.update(Role.users()),
         Permission.delete(Role.users()),
       ],
-      documentSecurity,
-    });
+      documentSecurity
+    );
     console.log(`✓ Created collection: ${collectionId}`);
   }
 }
@@ -90,12 +84,10 @@ type AppwriteAttribute = {
   status?: string;
 };
 
-async function listAllAttributes(collectionId: string): Promise<AppwriteAttribute[]> {
-  const result = await databases.listAttributes({
-    databaseId,
-    collectionId,
-  });
-
+async function listAllAttributes(
+  collectionId: string
+): Promise<AppwriteAttribute[]> {
+  const result = await databases.listAttributes(databaseId, collectionId);
   return (result.attributes ?? []) as AppwriteAttribute[];
 }
 
@@ -142,15 +134,15 @@ async function ensureStringAttribute(
   }
 
   console.log(`Creating string attribute: ${collectionId}.${key}`);
-  await databases.createStringAttribute({
+  await databases.createStringAttribute(
     databaseId,
     collectionId,
     key,
     size,
     required,
-    array,
-    default: defaultValue,
-  });
+    defaultValue,
+    array
+  );
   console.log(`✓ Created attribute: ${collectionId}.${key}`);
 }
 
@@ -165,12 +157,7 @@ async function ensureDatetimeAttribute(
   }
 
   console.log(`Creating datetime attribute: ${collectionId}.${key}`);
-  await databases.createDatetimeAttribute({
-    databaseId,
-    collectionId,
-    key,
-    required,
-  });
+  await databases.createDatetimeAttribute(databaseId, collectionId, key, required);
   console.log(`✓ Created attribute: ${collectionId}.${key}`);
 }
 
@@ -179,11 +166,7 @@ type AppwriteIndex = {
 };
 
 async function listAllIndexes(collectionId: string): Promise<AppwriteIndex[]> {
-  const result = await databases.listIndexes({
-    databaseId,
-    collectionId,
-  });
-
+  const result = await databases.listIndexes(databaseId, collectionId);
   return (result.indexes ?? []) as AppwriteIndex[];
 }
 
@@ -206,14 +189,21 @@ async function ensureIndex(
 
   console.log(`Creating index: ${collectionId}.${key}`);
 
-  await databases.createIndex({
+  const mappedType =
+    type === "key"
+      ? IndexType.Key
+      : type === "fulltext"
+        ? IndexType.Fulltext
+        : IndexType.Unique;
+
+  await databases.createIndex(
     databaseId,
     collectionId,
     key,
-    type,
+    mappedType,
     attributes,
-    orders,
-  });
+    orders
+  );
 
   console.log(`✓ Created index: ${collectionId}.${key}`);
 }
