@@ -1,4 +1,4 @@
-import { Client, Account, Databases, Users } from "appwrite";
+import { Client, Databases, Users } from "node-appwrite";
 
 const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT;
 const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
@@ -13,6 +13,5 @@ const adminClient = new Client()
   .setProject(projectId)
   .setKey(apiKey);
 
-export const adminAccount = new Account(adminClient);
 export const adminDatabases = new Databases(adminClient);
 export const adminUsers = new Users(adminClient);
