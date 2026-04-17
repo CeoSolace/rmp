@@ -268,12 +268,14 @@ async function main() {
   await ensureStringAttribute(profilesId, "username", 32, true);
   await ensureStringAttribute(profilesId, "usernameLower", 32, true);
   await ensureStringAttribute(profilesId, "displayName", 64, false, false, "");
+  await ensureStringAttribute(profilesId, "bio", 1000, false, false, "");
 
   await waitForAttributes(profilesId, [
     "userId",
     "username",
     "usernameLower",
     "displayName",
+    "bio",
   ]);
 
   await ensureIndex(profilesId, "userId_unique", "unique", ["userId"]);
