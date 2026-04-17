@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   account,
   databases,
   ID,
   Query,
+  Realtime,
   type Models,
   appwriteClient,
 } from "../../../lib/appwrite/client";
@@ -21,6 +22,7 @@ import { normalizeUsername } from "../../../lib/validators";
 
 export default function ChatPage() {
   const router = useRouter();
+  const realtime = useMemo(() => new Realtime(appwriteClient), []);
 
   const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
   const [conversations, setConversations] = useState<Models.Document[]>([]);
@@ -83,18 +85,27 @@ export default function ChatPage() {
 
         setMessages(res.documents);
 
-        unsubscribe = appwriteClient.subscribe(
+        unsubscribe = realtime.subscribe(
           `databases.${DATABASE_ID}.collections.${MESSAGES_COLLECTION_ID}.documents`,
-          (payload: { payload?: Models.Document }) => {
-            const doc = payload?.payload;
+          (response: { payload?: Models.Document; events?: string[] }) => {
+            const doc = response?.payload;
+            const events = response?.events ?? [];
+
+            const isCreateEvent = events.some((event) => event.includes(".create"));
+            if (!isCreateEvent) return;
 
             if (doc && doc.conversationId === activeConversation.$id) {
               setMessages((prev: Models.Document[]) => {
                 const alreadyExists = prev.some(
                   (message: Models.Document) => message.$id === doc.$id
                 );
+
                 if (alreadyExists) return prev;
-                return [...prev, doc];
+
+                return [...prev, doc].sort(
+                  (a: Models.Document, b: Models.Document) =>
+                    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                );
               });
             }
           }
@@ -107,9 +118,9 @@ export default function ChatPage() {
     void loadMessagesAndSubscribe();
 
     return () => {
-      if (unsubscribe) unsubscribe();
+      unsubscribe?.();
     };
-  }, [currentConversation]);
+  }, [currentConversation, realtime]);
 
   async function sendMessage() {
     if (!messageText.trim() || !currentConversation || !user) return;
@@ -162,6 +173,7 @@ export default function ChatPage() {
       );
     } catch (error) {
       console.error("Failed to send message", error);
+      setMessageText(content);
     }
   }
 
@@ -245,7 +257,7 @@ export default function ChatPage() {
     <div className="flex h-screen">
       <aside className="w-72 bg-gray-800 border-r border-gray-700 flex flex-col">
         <div className="p-4 border-b border-gray-700">
-          <h2 className="text-lg font-semibold">Conversations</h2>
+          <h2 className="text-lg font-semibold text-white">Conversations</h2>
 
           <div className="mt-2">
             <input
@@ -270,7 +282,7 @@ export default function ChatPage() {
                   onClick={() => void openDmForUser(result)}
                   className="block w-full text-left px-2 py-1 rounded hover:bg-gray-700"
                 >
-                  <div className="text-sm font-medium">
+                  <div className="text-sm font-medium text-white">
                     {result.displayName || result.username}
                   </div>
                   <div className="text-xs text-gray-400">@{result.username}</div>
@@ -295,7 +307,7 @@ export default function ChatPage() {
                       currentConversation?.$id === conversation.$id ? "bg-gray-700" : ""
                     }`}
                   >
-                    <div className="font-medium truncate">
+                    <div className="font-medium truncate text-white">
                       {conversation.lastMessageText || "New conversation"}
                     </div>
                     <div className="text-xs text-gray-400">
@@ -311,7 +323,7 @@ export default function ChatPage() {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col bg-gray-900">
         {currentConversation ? (
           <>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
