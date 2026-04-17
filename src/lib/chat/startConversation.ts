@@ -1,8 +1,9 @@
 import { ID, Query } from "appwrite";
-import { databases } from "@/src/lib/appwrite/client";
+import { databases } from "@/lib/appwrite/client";
 
 const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
-const profilesCollectionId = process.env.NEXT_PUBLIC_APPWRITE_PROFILES_COLLECTION_ID!;
+const profilesCollectionId =
+  process.env.NEXT_PUBLIC_APPWRITE_PROFILES_COLLECTION_ID!;
 const conversationsCollectionId =
   process.env.NEXT_PUBLIC_APPWRITE_CONVERSATIONS_COLLECTION_ID!;
 
