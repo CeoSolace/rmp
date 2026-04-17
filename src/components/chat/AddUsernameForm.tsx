@@ -1,50 +1,65 @@
-import { NextRequest, NextResponse } from "next/server";
-import { account } from "@/src/lib/appwrite/client";
-import {
-  findProfileByUsername,
-  createOrGetDirectConversation,
-} from "@/src/lib/chat/startConversation";
+"use client";
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const rawUsername = String(body?.username || "").trim();
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 
-    if (!rawUsername) {
-      return NextResponse.json(
-        { error: "Username is required." },
-        { status: 400 }
-      );
+export default function AddUsernameForm() {
+  const [username, setUsername] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const router = useRouter();
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/chat/start-by-username", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to start chat.");
+      }
+
+      setUsername("");
+      router.push(`/messages/${data.conversationId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setLoading(false);
     }
-
-    const currentUser = await account.get();
-    const targetProfile = await findProfileByUsername(rawUsername);
-
-    if (!targetProfile) {
-      return NextResponse.json(
-        { error: "User not found." },
-        { status: 404 }
-      );
-    }
-
-    const conversation = await createOrGetDirectConversation(
-      currentUser.$id,
-      targetProfile.userId
-    );
-
-    return NextResponse.json({
-      success: true,
-      conversationId: conversation.$id,
-      targetUser: {
-        userId: targetProfile.userId,
-        username: targetProfile.username,
-        displayName: targetProfile.displayName || targetProfile.username,
-      },
-    });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to start conversation.";
-
-    return NextResponse.json({ error: message }, { status: 500 });
   }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <label className="text-sm font-medium">Add username</label>
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="@username"
+          className="w-full rounded-xl border px-3 py-2 outline-none"
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          className="rounded-xl border px-4 py-2 font-medium"
+        >
+          {loading ? "Starting..." : "Message"}
+        </button>
+      </div>
+
+      {error ? <p className="text-sm text-red-500">{error}</p> : null}
+    </form>
+  );
 }
