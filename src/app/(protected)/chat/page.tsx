@@ -46,26 +46,32 @@ export default function ChatPage() {
         setLoading(true);
         setError("");
 
-        const [conversationRes, messageRes] = await Promise.all([
-          databases.listDocuments<ConversationDoc>(
+        const [conversationResRaw, messageResRaw] = await Promise.all([
+          databases.listDocuments(
             DATABASE_ID,
             CONVERSATIONS_COLLECTION_ID,
             [Query.orderDesc("$updatedAt"), Query.limit(100)]
           ),
-          databases.listDocuments<MessageDoc>(
+          databases.listDocuments(
             DATABASE_ID,
             MESSAGES_COLLECTION_ID,
             [Query.orderDesc("$createdAt"), Query.limit(200)]
           ),
         ]);
 
+        const conversationRes =
+          conversationResRaw as Models.DocumentList<ConversationDoc>;
+        const messageRes = messageResRaw as Models.DocumentList<MessageDoc>;
+
         if (cancelled) return;
 
         setConversations(conversationRes.documents);
         setMessages(messageRes.documents);
 
-        if (!selectedConversationId && conversationRes.documents.length > 0) {
-          setSelectedConversationId(conversationRes.documents[0].$id);
+        if (conversationRes.documents.length > 0) {
+          setSelectedConversationId((current) =>
+            current ?? conversationRes.documents[0].$id
+          );
         }
 
         unsubMessages = appwriteClient.subscribe(
@@ -142,7 +148,7 @@ export default function ChatPage() {
       if (unsubMessages) unsubMessages();
       if (unsubConversations) unsubConversations();
     };
-  }, [selectedConversationId]);
+  }, []);
 
   const filteredMessages = useMemo(() => {
     if (!selectedConversationId) return [];
