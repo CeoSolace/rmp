@@ -11,11 +11,12 @@ if (!projectId) {
   throw new Error("NEXT_PUBLIC_APPWRITE_PROJECT_ID is missing");
 }
 
-const client = new Client().setEndpoint(endpoint).setProject(projectId);
+export const appwriteClient = new Client()
+  .setEndpoint(endpoint)
+  .setProject(projectId);
 
-export const appwriteClient = client;
-export const account = new Account(client);
-export const databases = new Databases(client);
+export const account = new Account(appwriteClient);
+export const databases = new Databases(appwriteClient);
 
 export { ID, Query, type Models };
 
