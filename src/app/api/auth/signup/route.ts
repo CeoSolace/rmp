@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ID, Query } from "node-appwrite";
+import { ID, Query, Models } from "node-appwrite";
 import { adminDatabases, adminUsers } from "@/lib/appwrite/server";
 import { getUsernameError, normalizeUsername } from "@/lib/usernames";
 
@@ -7,8 +7,7 @@ const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
 const profilesCollectionId =
   process.env.NEXT_PUBLIC_APPWRITE_PROFILES_COLLECTION_ID!;
 
-type ProfileDoc = {
-  $id: string;
+type ProfileDoc = Models.Document & {
   userId: string;
   email: string;
   username: string;
