@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { account, databases, ID, Query } from "../../../lib/appwrite/client";
 import {
   validateEmail,
-  validatePassword,
   validateUsername,
   normalizeUsername,
 } from "../../../lib/validators";
@@ -28,9 +27,7 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement>
-  ) {
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   }
@@ -48,8 +45,9 @@ export default function AuthPage() {
         throw new Error("Please enter a valid email.");
       }
 
-      if (!validatePassword(password)) {
-        throw new Error("Password must be at least 6 characters.");
+      // Appwrite account creation requires 8+ chars
+      if (password.length < 8) {
+        throw new Error("Password must be at least 8 characters.");
       }
 
       if (mode === "signup") {
@@ -63,7 +61,7 @@ export default function AuthPage() {
 
         const usernameLower = normalizeUsername(username);
 
-        if (RESERVED_USERNAMES.includes(usernameLower as any)) {
+        if (RESERVED_USERNAMES.includes(usernameLower as never)) {
           throw new Error("This username is reserved.");
         }
 
@@ -78,12 +76,20 @@ export default function AuthPage() {
         }
 
         const userId = ID.unique();
-
-        await account.create(userId, email, password);
-        await account.createEmailSession(email, password);
-
         const displayName = form.displayName.trim() || username;
         const now = new Date().toISOString();
+
+        await account.create({
+          userId,
+          email,
+          password,
+          name: displayName,
+        });
+
+        await account.createEmailPasswordSession({
+          email,
+          password,
+        });
 
         const isOwner =
           email.toLowerCase() ===
@@ -106,12 +112,17 @@ export default function AuthPage() {
           }
         );
       } else {
-        await account.createEmailSession(email, password);
+        await account.createEmailPasswordSession({
+          email,
+          password,
+        });
       }
 
       router.push("/chat");
-    } catch (err: any) {
-      setError(err?.message || "Authentication failed.");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Authentication failed.";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -119,14 +130,14 @@ export default function AuthPage() {
 
   return (
     <div className="flex items-center justify-center min-h-screen p-4">
-      <div className="w-full max-w-md bg-gray-800 rounded-lg p-6 shadow-md">
-        <h1 className="text-2xl font-bold mb-4 text-center">
+      <div className="w-full max-w-md rounded-lg bg-gray-800 p-6 shadow-md">
+        <h1 className="mb-4 text-center text-2xl font-bold">
           {mode === "login"
             ? "Login to RampChat"
             : "Create your RampChat account"}
         </h1>
 
-        {error && <p className="text-red-500 mb-3 text-sm">{error}</p>}
+        {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -139,7 +150,7 @@ export default function AuthPage() {
               name="email"
               value={form.email}
               onChange={handleChange}
-              className="w-full mt-1 p-2 rounded bg-gray-700 text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="mt-1 w-full rounded bg-gray-700 p-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               required
             />
           </div>
@@ -156,7 +167,7 @@ export default function AuthPage() {
                   name="username"
                   value={form.username}
                   onChange={handleChange}
-                  className="w-full mt-1 p-2 rounded bg-gray-700 text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="mt-1 w-full rounded bg-gray-700 p-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   required
                 />
               </div>
@@ -174,7 +185,7 @@ export default function AuthPage() {
                   name="displayName"
                   value={form.displayName}
                   onChange={handleChange}
-                  className="w-full mt-1 p-2 rounded bg-gray-700 text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="mt-1 w-full rounded bg-gray-700 p-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             </>
@@ -190,7 +201,7 @@ export default function AuthPage() {
               name="password"
               value={form.password}
               onChange={handleChange}
-              className="w-full mt-1 p-2 rounded bg-gray-700 text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="mt-1 w-full rounded bg-gray-700 p-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               required
             />
           </div>
@@ -198,19 +209,19 @@ export default function AuthPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white py-2 rounded"
+            className="w-full rounded bg-indigo-600 py-2 text-white hover:bg-indigo-500 disabled:opacity-50"
           >
             {loading ? "Please wait…" : mode === "login" ? "Log in" : "Sign up"}
           </button>
         </form>
 
-        <p className="text-center text-sm mt-4">
+        <p className="mt-4 text-center text-sm">
           {mode === "login" ? (
             <>
               Don’t have an account?{" "}
               <button
                 type="button"
-                className="underline text-indigo-400"
+                className="text-indigo-400 underline"
                 onClick={() => setMode("signup")}
               >
                 Sign up
@@ -221,7 +232,7 @@ export default function AuthPage() {
               Already have an account?{" "}
               <button
                 type="button"
-                className="underline text-indigo-400"
+                className="text-indigo-400 underline"
                 onClick={() => setMode("login")}
               >
                 Log in
