@@ -1,4 +1,4 @@
-import { ID, Query } from "appwrite";
+import { ID, Query, type Models } from "appwrite";
 import { databases } from "@/lib/appwrite/client";
 
 const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
@@ -7,16 +7,14 @@ const profilesCollectionId =
 const conversationsCollectionId =
   process.env.NEXT_PUBLIC_APPWRITE_CONVERSATIONS_COLLECTION_ID!;
 
-type ProfileDoc = {
-  $id: string;
+type ProfileDoc = Models.Document & {
   userId: string;
   username: string;
   usernameLower: string;
   displayName?: string;
 };
 
-type ConversationDoc = {
-  $id: string;
+type ConversationDoc = Models.Document & {
   type: "direct" | "group";
   participantIds: string[];
   participantKey: string;
@@ -28,7 +26,9 @@ export function normalizeUsername(username: string) {
   return username.trim().replace(/^@+/, "").toLowerCase();
 }
 
-export async function findProfileByUsername(username: string) {
+export async function findProfileByUsername(
+  username: string
+): Promise<ProfileDoc | null> {
   const usernameLower = normalizeUsername(username);
 
   const result = await databases.listDocuments<ProfileDoc>(
@@ -47,7 +47,7 @@ export function buildDirectParticipantKey(userA: string, userB: string) {
 export async function createOrGetDirectConversation(
   currentUserId: string,
   targetUserId: string
-) {
+): Promise<ConversationDoc> {
   if (currentUserId === targetUserId) {
     throw new Error("You cannot message yourself.");
   }
