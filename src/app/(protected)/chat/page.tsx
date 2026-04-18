@@ -1,381 +1,237 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import {
-  account,
+  appwriteClient,
   databases,
-  ID,
   Query,
   type Models,
-  appwriteClient,
-} from "../../../lib/appwrite/client";
-import {
-  DATABASE_ID,
-  CONVERSATIONS_COLLECTION_ID,
-  MESSAGES_COLLECTION_ID,
-  PROFILES_COLLECTION_ID,
-} from "../../../lib/constants";
-import { generateParticipantKey } from "../../../lib/utils";
-import { normalizeUsername } from "../../../lib/validators";
+} from "@/lib/appwrite/client";
+import AddUsernameForm from "@/components/chat/AddUsernameForm";
+
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
+const MESSAGES_COLLECTION_ID =
+  process.env.NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID!;
+const CONVERSATIONS_COLLECTION_ID =
+  process.env.NEXT_PUBLIC_APPWRITE_CONVERSATIONS_COLLECTION_ID!;
+
+type MessageDoc = Models.Document & {
+  conversationId?: string;
+  senderId?: string;
+  body?: string;
+};
+
+type ConversationDoc = Models.Document & {
+  type?: string;
+  participantIds?: string[];
+  participantKey?: string;
+};
 
 export default function ChatPage() {
-  const router = useRouter();
-
-  const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
-  const [conversations, setConversations] = useState<Models.Document[]>([]);
-  const [currentConversation, setCurrentConversation] = useState<Models.Document | null>(null);
-  const [messages, setMessages] = useState<Models.Document[]>([]);
-  const [messageText, setMessageText] = useState("");
-  const [search, setSearch] = useState("");
-  const [searchResults, setSearchResults] = useState<Models.Document[]>([]);
-  const [loadingConversations, setLoadingConversations] = useState(true);
+  const [messages, setMessages] = useState<MessageDoc[]>([]);
+  const [conversations, setConversations] = useState<ConversationDoc[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<
+    string | null
+  >(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    async function init() {
+    let unsubMessages: (() => void) | undefined;
+    let unsubConversations: (() => void) | undefined;
+    let cancelled = false;
+
+    async function load() {
       try {
-        const current = await account.get();
-        setUser(current);
-        await loadConversations(current.$id);
-      } catch {
-        router.push("/auth");
-      }
-    }
+        setLoading(true);
+        setError("");
 
-    void init();
-  }, [router]);
+        const [conversationRes, messageRes] = await Promise.all([
+          databases.listDocuments<ConversationDoc>(
+            DATABASE_ID,
+            CONVERSATIONS_COLLECTION_ID,
+            [Query.orderDesc("$updatedAt"), Query.limit(100)]
+          ),
+          databases.listDocuments<MessageDoc>(
+            DATABASE_ID,
+            MESSAGES_COLLECTION_ID,
+            [Query.orderDesc("$createdAt"), Query.limit(200)]
+          ),
+        ]);
 
-  async function loadConversations(userId: string) {
-    setLoadingConversations(true);
+        if (cancelled) return;
 
-    try {
-      const res = await databases.listDocuments(
-        DATABASE_ID,
-        CONVERSATIONS_COLLECTION_ID,
-        [Query.contains("participantIds", userId), Query.orderDesc("lastMessageAt")]
-      );
+        setConversations(conversationRes.documents);
+        setMessages(messageRes.documents);
 
-      setConversations(res.documents);
-    } catch (error) {
-      console.error("Failed to load conversations", error);
-    } finally {
-      setLoadingConversations(false);
-    }
-  }
+        if (!selectedConversationId && conversationRes.documents.length > 0) {
+          setSelectedConversationId(conversationRes.documents[0].$id);
+        }
 
-  useEffect(() => {
-    if (!currentConversation) return;
-
-    const activeConversation = currentConversation;
-    let unsubscribe: (() => void) | undefined;
-
-    async function loadMessagesAndSubscribe() {
-      try {
-        const res = await databases.listDocuments(
-          DATABASE_ID,
-          MESSAGES_COLLECTION_ID,
-          [
-            Query.equal("conversationId", activeConversation.$id),
-            Query.orderAsc("createdAt"),
-            Query.limit(100),
-          ]
-        );
-
-        setMessages(res.documents);
-
-        unsubscribe = appwriteClient.subscribe(
+        unsubMessages = appwriteClient.subscribe(
           `databases.${DATABASE_ID}.collections.${MESSAGES_COLLECTION_ID}.documents`,
-          (response: { payload?: unknown; events?: string[] }) => {
-            const doc = response?.payload as Models.Document | undefined;
-            const events = response?.events ?? [];
+          (response) => {
+            const doc = response.payload as MessageDoc | undefined;
+            if (!doc?.$id) return;
 
-            const isCreateEvent = events.some((event) => event.includes(".create"));
-            if (!isCreateEvent || !doc) return;
+            const events = response.events || [];
+            const isCreate = events.some((event) => event.includes(".create"));
+            const isUpdate = events.some((event) => event.includes(".update"));
+            const isDelete = events.some((event) => event.includes(".delete"));
 
-            if (doc.conversationId === activeConversation.$id) {
-              setMessages((prev: Models.Document[]) => {
-                const alreadyExists = prev.some(
-                  (message: Models.Document) => message.$id === doc.$id
-                );
-
-                if (alreadyExists) return prev;
-
-                return [...prev, doc].sort(
-                  (a: Models.Document, b: Models.Document) =>
-                    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-                );
+            if (isCreate) {
+              setMessages((prev) => {
+                if (prev.some((m) => m.$id === doc.$id)) return prev;
+                return [doc, ...prev];
               });
+            } else if (isUpdate) {
+              setMessages((prev) =>
+                prev.map((m) => (m.$id === doc.$id ? { ...m, ...doc } : m))
+              );
+            } else if (isDelete) {
+              setMessages((prev) => prev.filter((m) => m.$id !== doc.$id));
             }
           }
         );
-      } catch (error) {
-        console.error("Failed to load messages", error);
-      }
-    }
 
-    void loadMessagesAndSubscribe();
+        unsubConversations = appwriteClient.subscribe(
+          `databases.${DATABASE_ID}.collections.${CONVERSATIONS_COLLECTION_ID}.documents`,
+          (response) => {
+            const doc = response.payload as ConversationDoc | undefined;
+            if (!doc?.$id) return;
 
-    return () => {
-      unsubscribe?.();
-    };
-  }, [currentConversation]);
+            const events = response.events || [];
+            const isCreate = events.some((event) => event.includes(".create"));
+            const isUpdate = events.some((event) => event.includes(".update"));
+            const isDelete = events.some((event) => event.includes(".delete"));
 
-  async function sendMessage() {
-    if (!messageText.trim() || !currentConversation || !user) return;
+            if (isCreate) {
+              setConversations((prev) => {
+                if (prev.some((c) => c.$id === doc.$id)) return prev;
+                return [doc, ...prev];
+              });
 
-    const activeConversation = currentConversation;
-    const content = messageText.trim();
-    setMessageText("");
-
-    try {
-      const now = new Date().toISOString();
-
-      await databases.createDocument(
-        DATABASE_ID,
-        MESSAGES_COLLECTION_ID,
-        ID.unique(),
-        {
-          conversationId: activeConversation.$id,
-          senderId: user.$id,
-          content,
-          createdAt: now,
-          messageType: "text",
-        }
-      );
-
-      await databases.updateDocument(
-        DATABASE_ID,
-        CONVERSATIONS_COLLECTION_ID,
-        activeConversation.$id,
-        {
-          lastMessageText: content,
-          lastMessageAt: now,
-        }
-      );
-
-      setConversations((prev: Models.Document[]) =>
-        prev
-          .map((conversation: Models.Document) =>
-            conversation.$id === activeConversation.$id
-              ? {
-                  ...conversation,
-                  lastMessageText: content,
-                  lastMessageAt: now,
-                }
-              : conversation
-          )
-          .sort(
-            (a: Models.Document, b: Models.Document) =>
-              new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
-          )
-      );
-    } catch (error) {
-      console.error("Failed to send message", error);
-      setMessageText(content);
-    }
-  }
-
-  async function performSearch() {
-    if (!search.trim() || !user) {
-      setSearchResults([]);
-      return;
-    }
-
-    try {
-      const q = normalizeUsername(search);
-
-      const res = await databases.listDocuments(
-        DATABASE_ID,
-        PROFILES_COLLECTION_ID,
-        [Query.search("usernameLower", q), Query.limit(5)]
-      );
-
-      const filtered = res.documents.filter(
-        (profile: Models.Document) => profile.userId !== user.$id
-      );
-
-      setSearchResults(filtered);
-    } catch (error) {
-      console.error("Search failed", error);
-    }
-  }
-
-  async function openDmForUser(target: Models.Document) {
-    if (!user) return;
-
-    const participantIds = [user.$id, target.userId];
-    const participantKey = generateParticipantKey(participantIds);
-
-    try {
-      const existing = await databases.listDocuments(
-        DATABASE_ID,
-        CONVERSATIONS_COLLECTION_ID,
-        [Query.equal("participantKey", participantKey), Query.limit(1)]
-      );
-
-      let conversation: Models.Document;
-
-      if (existing.total > 0) {
-        conversation = existing.documents[0];
-      } else {
-        const now = new Date().toISOString();
-
-        conversation = await databases.createDocument(
-          DATABASE_ID,
-          CONVERSATIONS_COLLECTION_ID,
-          ID.unique(),
-          {
-            type: "dm",
-            participantIds,
-            participantKey,
-            lastMessageText: "",
-            lastMessageAt: now,
-            createdAt: now,
-            createdBy: user.$id,
+              setSelectedConversationId((current) => current ?? doc.$id);
+            } else if (isUpdate) {
+              setConversations((prev) =>
+                prev.map((c) => (c.$id === doc.$id ? { ...c, ...doc } : c))
+              );
+            } else if (isDelete) {
+              setConversations((prev) => prev.filter((c) => c.$id !== doc.$id));
+              setSelectedConversationId((current) =>
+                current === doc.$id ? null : current
+              );
+            }
           }
         );
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to load chat data."
+        );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-
-      setCurrentConversation(conversation);
-
-      setConversations((prev: Models.Document[]) => {
-        const exists = prev.some((item: Models.Document) => item.$id === conversation.$id);
-        if (exists) return prev;
-        return [conversation, ...prev];
-      });
-
-      setSearch("");
-      setSearchResults([]);
-    } catch (error) {
-      console.error("Failed to open DM", error);
     }
-  }
+
+    load();
+
+    return () => {
+      cancelled = true;
+      if (unsubMessages) unsubMessages();
+      if (unsubConversations) unsubConversations();
+    };
+  }, [selectedConversationId]);
+
+  const filteredMessages = useMemo(() => {
+    if (!selectedConversationId) return [];
+    return messages
+      .filter((message) => message.conversationId === selectedConversationId)
+      .sort((a, b) => {
+        const aDate = new Date(a.$createdAt).getTime();
+        const bDate = new Date(b.$createdAt).getTime();
+        return aDate - bDate;
+      });
+  }, [messages, selectedConversationId]);
 
   return (
-    <div className="flex h-screen">
-      <aside className="w-72 bg-gray-800 border-r border-gray-700 flex flex-col">
-        <div className="p-4 border-b border-gray-700">
-          <h2 className="text-lg font-semibold text-white">Conversations</h2>
+    <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 p-6 md:grid-cols-[320px_1fr]">
+      <aside className="rounded-2xl border p-4">
+        <h1 className="mb-4 text-2xl font-bold">Chat</h1>
 
-          <div className="mt-2">
-            <input
-              type="text"
-              placeholder="Search users…"
-              value={search}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
-              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                if (e.key === "Enter") {
-                  void performSearch();
-                }
-              }}
-              className="w-full p-2 rounded bg-gray-700 text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-
-          {searchResults.length > 0 && (
-            <div className="mt-2 max-h-40 overflow-y-auto">
-              {searchResults.map((result: Models.Document) => (
-                <button
-                  key={result.$id}
-                  onClick={() => void openDmForUser(result)}
-                  className="block w-full text-left px-2 py-1 rounded hover:bg-gray-700"
-                >
-                  <div className="text-sm font-medium text-white">
-                    {result.displayName || result.username}
-                  </div>
-                  <div className="text-xs text-gray-400">@{result.username}</div>
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="mb-6">
+          <AddUsernameForm />
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {loadingConversations ? (
-            <p className="p-4 text-sm text-gray-400">Loading…</p>
-          ) : conversations.length === 0 ? (
-            <p className="p-4 text-sm text-gray-400">No conversations yet.</p>
-          ) : (
-            <ul>
-              {conversations.map((conversation: Models.Document) => (
-                <li key={conversation.$id}>
-                  <button
-                    onClick={() => setCurrentConversation(conversation)}
-                    className={`w-full text-left px-4 py-2 hover:bg-gray-700 ${
-                      currentConversation?.$id === conversation.$id ? "bg-gray-700" : ""
-                    }`}
-                  >
-                    <div className="font-medium truncate text-white">
-                      {conversation.lastMessageText || "New conversation"}
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      {conversation.lastMessageAt
-                        ? new Date(conversation.lastMessageAt).toLocaleString()
-                        : ""}
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+        <h2 className="mb-3 text-sm font-semibold opacity-70">Conversations</h2>
+
+        <div className="space-y-2">
+          {conversations.map((conversation) => {
+            const active = conversation.$id === selectedConversationId;
+
+            return (
+              <button
+                key={conversation.$id}
+                type="button"
+                onClick={() => setSelectedConversationId(conversation.$id)}
+                className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                  active ? "bg-neutral-100 dark:bg-neutral-900" : ""
+                }`}
+              >
+                <div className="text-sm font-medium">
+                  {conversation.type === "direct"
+                    ? "Direct message"
+                    : conversation.type || "Conversation"}
+                </div>
+                <div className="text-xs opacity-70">{conversation.$id}</div>
+              </button>
+            );
+          })}
+
+          {!loading && conversations.length === 0 ? (
+            <p className="text-sm opacity-70">No conversations yet.</p>
+          ) : null}
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col bg-gray-900">
-        {currentConversation ? (
-          <>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {messages.map((message: Models.Document) => (
-                <div
-                  key={message.$id}
-                  className={`max-w-md ${
-                    message.senderId === user?.$id ? "ml-auto text-right" : ""
-                  }`}
-                >
-                  <div
-                    className={`inline-block px-3 py-2 rounded-lg ${
-                      message.senderId === user?.$id
-                        ? "bg-indigo-600 text-white"
-                        : "bg-gray-700 text-gray-100"
-                    }`}
-                  >
-                    {message.content}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {new Date(message.createdAt).toLocaleTimeString()}
-                  </div>
-                </div>
-              ))}
-            </div>
+      <main className="rounded-2xl border p-4">
+        {loading ? <p>Loading chat...</p> : null}
+        {error ? <p className="text-sm text-red-500">{error}</p> : null}
 
-            <div className="p-4 border-t border-gray-700 flex space-x-2">
-              <input
-                type="text"
-                value={messageText}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMessageText(e.target.value)}
-                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                  if (e.key === "Enter") {
-                    void sendMessage();
-                  }
-                }}
-                placeholder="Type your message…"
-                className="flex-1 p-2 rounded bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <button
-                onClick={() => void sendMessage()}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded"
-              >
-                Send
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="flex items-center justify-center flex-1">
-            <p className="text-sm text-gray-400">
-              Select a conversation or search for a user to start chatting.
+        {!loading && !selectedConversationId ? (
+          <div className="flex h-full min-h-[420px] items-center justify-center">
+            <p className="text-sm opacity-70">
+              Pick a conversation or add a username to start one.
             </p>
           </div>
-        )}
+        ) : null}
+
+        {!loading && selectedConversationId ? (
+          <div className="flex min-h-[420px] flex-col">
+            <div className="mb-4 border-b pb-3">
+              <h2 className="text-lg font-semibold">Messages</h2>
+              <p className="text-xs opacity-70">
+                Conversation ID: {selectedConversationId}
+              </p>
+            </div>
+
+            <div className="flex-1 space-y-3">
+              {filteredMessages.map((message) => (
+                <div key={message.$id} className="rounded-xl border p-3">
+                  <div className="mb-1 text-xs opacity-70">
+                    {message.senderId || "Unknown sender"}
+                  </div>
+                  <div className="text-sm">{String(message.body || "")}</div>
+                </div>
+              ))}
+
+              {filteredMessages.length === 0 ? (
+                <p className="text-sm opacity-70">No messages yet.</p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </main>
     </div>
   );
