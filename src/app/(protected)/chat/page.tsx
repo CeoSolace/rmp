@@ -27,6 +27,11 @@ type ConversationDoc = Models.Document & {
   participantKey?: string;
 };
 
+type RealtimeResponse = {
+  events?: string[];
+  payload?: unknown;
+};
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<MessageDoc[]>([]);
   const [conversations, setConversations] = useState<ConversationDoc[]>([]);
@@ -46,22 +51,18 @@ export default function ChatPage() {
         setLoading(true);
         setError("");
 
-        const [conversationResRaw, messageResRaw] = await Promise.all([
-          databases.listDocuments(
+        const [conversationRes, messageRes] = await Promise.all([
+          databases.listDocuments<ConversationDoc>(
             DATABASE_ID,
             CONVERSATIONS_COLLECTION_ID,
             [Query.orderDesc("$updatedAt"), Query.limit(100)]
           ),
-          databases.listDocuments(
+          databases.listDocuments<MessageDoc>(
             DATABASE_ID,
             MESSAGES_COLLECTION_ID,
             [Query.orderDesc("$createdAt"), Query.limit(200)]
           ),
         ]);
-
-        const conversationRes =
-          conversationResRaw as Models.DocumentList<ConversationDoc>;
-        const messageRes = messageResRaw as Models.DocumentList<MessageDoc>;
 
         if (cancelled) return;
 
@@ -76,7 +77,7 @@ export default function ChatPage() {
 
         unsubMessages = appwriteClient.subscribe(
           `databases.${DATABASE_ID}.collections.${MESSAGES_COLLECTION_ID}.documents`,
-          (response) => {
+          (response: RealtimeResponse) => {
             const doc = response.payload as MessageDoc | undefined;
             if (!doc?.$id) return;
 
@@ -102,7 +103,7 @@ export default function ChatPage() {
 
         unsubConversations = appwriteClient.subscribe(
           `databases.${DATABASE_ID}.collections.${CONVERSATIONS_COLLECTION_ID}.documents`,
-          (response) => {
+          (response: RealtimeResponse) => {
             const doc = response.payload as ConversationDoc | undefined;
             if (!doc?.$id) return;
 
@@ -155,8 +156,8 @@ export default function ChatPage() {
     return messages
       .filter((message) => message.conversationId === selectedConversationId)
       .sort((a, b) => {
-        const aDate = new Date(a.$createdAt).getTime();
-        const bDate = new Date(b.$createdAt).getTime();
+        const aDate = new Date(a.$createdAt || 0).getTime();
+        const bDate = new Date(b.$createdAt || 0).getTime();
         return aDate - bDate;
       });
   }, [messages, selectedConversationId]);
