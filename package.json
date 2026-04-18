@@ -7,8 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
-    "setup:appwrite": "tsx scripts/setup-appwrite.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "next": "14.2.3",
