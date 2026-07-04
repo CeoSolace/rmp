@@ -1,5 +1,1 @@
-/// <reference types="next" />
-/// <reference types="next/image-types/global" />
-/// <reference types="next/navigation-types/compat" />
-
-// NOTE: This file should not be edited
+npx concurrently "cd server && npm start" "cd client && npm start -- --host 0.0.0.0 --port 3002"
