@@ -1,122 +1,19 @@
-import { NextResponse } from 'next/server';
-import { connectDb } from '../../../../lib/db';
-import AuditEntry from '../../../../models/AuditEntry';
-import { compressJson, decompressJson, compactText } from '../../../../lib/auditCompression';
-import { tempLog } from '../../../../lib/logging';
+cd /d C:\Windows\System32\propergeeks-rebuild\server
 
-export const runtime = 'nodejs';
-
-function generateAuditNumber() {
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  let prefix = '';
-
-  for (let i = 0; i < 3; i++) {
-    prefix += letters[Math.floor(Math.random() * letters.length)];
-  }
-
-  const numbers = String(Math.floor(100 + Math.random() * 900));
-  return `${prefix}${numbers}`;
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p='server.js'; $s=Get-Content $p -Raw; Copy-Item $p ($p+'.bak') -Force; $s=[regex]::Replace($s,'function makeRef[\s\S]*?app\.get\(\"/api/health\"','app.get(\"/api/health\"'); $fn=@'
+function makeRef(prefix){
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const letters = Array.from({length:3}, function(){
+    return chars[Math.floor(Math.random() * chars.length)];
+  }).join("");
+  const nums = String(Math.floor(Math.random() * 900) + 100);
+  return String(prefix || "REF") + "-" + letters + nums;
 }
 
-export async function GET() {
-  try {
-    await connectDb();
+'@; $s=$s.Replace('app.get(\"/api/health\"',$fn+'app.get(\"/api/health\"'); Set-Content -Encoding UTF8 $p $s"
 
-    const rawEntries = await AuditEntry.find({})
-      .sort({ createdAt: -1 })
-      .limit(300)
-      .lean();
+node -c server.js
 
-    const entries = rawEntries.map((entry) => ({
-      ...entry,
-      auditNumber: entry.auditNumber || generateAuditNumber(),
-      answers: decompressJson(entry.answersCompressed, []),
-      notes: decompressJson(entry.notesCompressed, ''),
-      photos: (entry.photos || []).map((photo) => ({
-        ...photo,
-        ocrText: photo.ocrTextCompressed
-          ? decompressJson(photo.ocrTextCompressed, '')
-          : '',
-      })),
-    }));
+cd /d C:\Windows\System32\propergeeks-rebuild
 
-    return NextResponse.json({ entries });
-  } catch (err) {
-    console.error('List audit entries error:', err);
-    return NextResponse.json(
-      { message: 'Could not load audit entries' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request) {
-  try {
-    const body = await request.json();
-
-    let auditNumber = compactText(body.auditNumber || '');
-
-    if (!auditNumber) {
-      auditNumber = generateAuditNumber();
-    }
-
-    const staffName = compactText(body.staffName || 'Staff');
-    const notes = compactText(body.notes || '');
-    const rawAnswers = Array.isArray(body.answers) ? body.answers : [];
-
-    const answers = rawAnswers
-      .map((answer, index) => ({
-        id: String(answer.id || `q-${index + 1}`),
-        label: compactText(answer.label || answer.question || ''),
-        value: compactText(answer.value || answer.answer || ''),
-      }))
-      .filter((answer) => answer.label || answer.value);
-
-    if (answers.length === 0 && !notes) {
-      return NextResponse.json(
-        { message: 'Add at least one answer or note' },
-        { status: 400 }
-      );
-    }
-
-    await connectDb();
-
-    const entry = await AuditEntry.create({
-      auditNumber,
-      staffName,
-      answersCompressed: compressJson(answers),
-      notesCompressed: compressJson(notes),
-      answerCount: answers.length,
-      source: 'manual',
-      photos: [],
-    });
-
-    await tempLog({
-      action: 'audit_submitted',
-      userName: staffName,
-      targetId: entry._id,
-      targetType: 'AuditEntry',
-      meta: {
-        auditNumber,
-        answerCount: answers.length,
-      },
-    });
-
-    return NextResponse.json(
-      {
-        entry: {
-          ...entry.toObject(),
-          answers,
-          notes,
-        },
-      },
-      { status: 201 }
-    );
-  } catch (err) {
-    console.error('Create audit entry error:', err);
-    return NextResponse.json(
-      { message: 'Could not submit audit entry' },
-      { status: 500 }
-    );
-  }
-}
+npx concurrently "cd server && npm start" "cd client && npm start -- --host 0.0.0.0 --port 3002"
