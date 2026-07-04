@@ -1,1 +1,1 @@
-cd /d C:\Windows\System32\propergeeks-rebuild\server && powershell -NoProfile -Command "(Get-Content server.js -Raw) -replace '; r`n\s*return ', '; return ' -replace '`\s*r`\s*n\s*', ' ' | Set-Content server.js" && taskkill /F /IM node.exe & npm start
+npx concurrently "cd server && npm start" "cd client && npm start -- --host 0.0.0.0 --port 3002"
