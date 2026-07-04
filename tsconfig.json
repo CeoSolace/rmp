@@ -1,3 +1,14 @@
 cd /d C:\Windows\System32\propergeeks-rebuild\server
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$p='server.js'; $s=Get-Content $p -Raw; if($s -notmatch 'function makeRef\s*\('){$fn='function makeRef(prefix){`r`n  const chars = ''ABCDEFGHJKLMNPQRSTUVWXYZ'';`r`n  const letters = Array.from({length:3}, function(){ return chars[Math.floor(Math.random()*chars.length)]; }).join('''');`r`n  const nums = String(Math.floor(Math.random()*900)+100);`r`n  return String(prefix || ''REF'') + ''-'' + letters + nums;`r`n}`r
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p='server.js'; $s=Get-Content $p -Raw; if($s -notmatch 'function makeRef\s*\('){$fn='function makeRef(prefix){`r`n  const chars = ''ABCDEFGHJKLMNPQRSTUVWXYZ'';`r`n  const letters = Array.from({length:3}, function(){ return chars[Math.floor(Math.random()*chars.length)]; }).join('''');`r`n  const nums = String(Math.floor(Math.random()*900)+100);`r`n  return String(prefix || ''REF'') + ''-'' + letters + nums;`r`n}`r`n`r`n'; if($s -match 'app\.get\(\"/api/health\"'){ $s=$s -replace 'app\.get\(\"/api/health\"', ($fn + 'app.get(\"/api/health\"') } else { $s=$s -replace 'const app=express\(\);', ($fn + 'const app=express();') }; Set-Content -Encoding UTF8 $p $s }"
+
+node -c server.js
+
+cd /d C:\Windows\System32\propergeeks-rebuild
+
+netsh advfirewall firewall add rule name="ProperGeeks3002" dir=in action=allow protocol=TCP localport=3002
+netsh advfirewall firewall add rule name="ProperGeeks3003" dir=in action=allow protocol=TCP localport=3003
+
+npm install concurrently
+
+npx concurrently "cd server && npm start" "cd client && npm start -- --host 0.0.0.0 --port 3002"
