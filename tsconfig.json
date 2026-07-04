@@ -1,14 +1,22 @@
 cd /d C:\Windows\System32\propergeeks-rebuild\server
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$p='server.js'; $s=Get-Content $p -Raw; if($s -notmatch 'function makeRef\s*\('){$fn='function makeRef(prefix){`r`n  const chars = ''ABCDEFGHJKLMNPQRSTUVWXYZ'';`r`n  const letters = Array.from({length:3}, function(){ return chars[Math.floor(Math.random()*chars.length)]; }).join('''');`r`n  const nums = String(Math.floor(Math.random()*900)+100);`r`n  return String(prefix || ''REF'') + ''-'' + letters + nums;`r`n}`r`n`r`n'; if($s -match 'app\.get\(\"/api/health\"'){ $s=$s -replace 'app\.get\(\"/api/health\"', ($fn + 'app.get(\"/api/health\"') } else { $s=$s -replace 'const app=express\(\);', ($fn + 'const app=express();') }; Set-Content -Encoding UTF8 $p $s }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p='server.js'; $s=Get-Content $p -Raw; $s=[regex]::Replace($s,'function makeRef[\s\S]*?app\.get\(\"/api/health\"','app.get(\"/api/health\"'); $fn=@'
+function makeRef(prefix, table, column){
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const letters = Array.from({length:3}, function(){
+    return chars[Math.floor(Math.random() * chars.length)];
+  }).join("");
+  const nums = String(Math.floor(Math.random() * 900) + 100);
+  const ref = String(prefix || "REF") + "-" + letters + nums;
+  try{
+    if(typeof db !== "undefined" && table && column){
+      const exists = db.prepare("SELECT id FROM " + table + " WHERE " + column + "=?").get(ref);
+      return exists ? makeRef(prefix, table, column) : ref;
+    }
+  }catch(e){}
+  return ref;
+}
+
+'@; $s=$s -replace 'const app=express\(\);', ($fn + 'const app=express();'); Set-Content -Encoding UTF8 $p $s"
 
 node -c server.js
-
-cd /d C:\Windows\System32\propergeeks-rebuild
-
-netsh advfirewall firewall add rule name="ProperGeeks3002" dir=in action=allow protocol=TCP localport=3002
-netsh advfirewall firewall add rule name="ProperGeeks3003" dir=in action=allow protocol=TCP localport=3003
-
-npm install concurrently
-
-npx concurrently "cd server && npm start" "cd client && npm start -- --host 0.0.0.0 --port 3002"
