@@ -1,278 +1,106 @@
-import React, { useEffect, useState } from "react";
-
-const API = "/api";
-
-export default function Workflow() {
-  const [templates, setTemplates] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [answers, setAnswers] = useState({});
-  const [editing, setEditing] = useState(false);
-  const [canEdit, setCanEdit] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  async function request(url, options = {}) {
-    const r = await fetch(API + url, {
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {})
-      },
-      ...options
-    });
-
-    if (!r.ok) {
-      throw new Error(await r.text());
-    }
-
-    return r.json();
-  }
-
-  async function load() {
-    setLoading(true);
-
-    try {
-      const data = await request("/workflows");
-
-      setTemplates(data.templates || []);
-      setCanEdit(
-        data.permissions?.includes("view_audits") || false
-      );
-
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  function updateAnswer(id, value) {
-    setAnswers(prev => ({
-      ...prev,
-      [id]: value
-    }));
-  }
-
-  async function save(status = "draft") {
-
-    await request("/workflows/run", {
-      method:"POST",
-      body:JSON.stringify({
-        template_id:selected.id,
-        answers,
-        status
-      })
-    });
-
-    alert(
-      status === "submitted"
-      ? "Audit submitted"
-      : "Draft saved"
-    );
-  }
-
-
-  if (loading)
-    return <div>Loading workflows...</div>;
-
-
-  return (
-    <div className="workflow-page">
-
-      <div className="workflow-header">
-        <h1>Workflows</h1>
-
-        {canEdit && (
-          <button
-            onClick={()=>setEditing(!editing)}
-          >
-            {editing
-              ? "Exit Editor"
-              : "Edit Workflows"}
-          </button>
-        )}
-      </div>
-
-
-      {!selected && (
-
-        <div className="workflow-list">
-
-          {templates.map(t=>(
-
-            <button
-              key={t.id}
-              className="workflow-card"
-              onClick={()=>setSelected(t)}
-            >
-              <h2>{t.name}</h2>
-              <p>{t.description}</p>
-              <span>
-                Start Audit
-              </span>
-            </button>
-
-          ))}
-
-        </div>
-
-      )}
-
-
-
-      {selected && (
-
-        <div>
-
-          <button
-            onClick={()=>{
-              setSelected(null);
-              setAnswers({});
-            }}
-          >
-            Back
-          </button>
-
-
-          <h2>{selected.name}</h2>
-
-
-          {selected.categories?.map(category=>(
-
-            <section
-              key={category.id}
-              className="workflow-category"
-            >
-
-              <h3>
-                {category.name}
-              </h3>
-
-
-              {category.questions?.map(q=>(
-
-                <div
-                  key={q.id}
-                  className="workflow-question"
-                >
-
-                  <label>
-                    {q.label}
-                  </label>
-
-
-                  {q.type==="textarea" ? (
-
-                    <textarea
-                      value={answers[q.id] || ""}
-                      onChange={e=>
-                        updateAnswer(
-                          q.id,
-                          e.target.value
-                        )
-                      }
-                    />
-
-                  ) : q.type==="boolean" ? (
-
-                    <input
-                      type="checkbox"
-                      checked={
-                        answers[q.id] || false
-                      }
-                      onChange={e=>
-                        updateAnswer(
-                          q.id,
-                          e.target.checked
-                        )
-                      }
-                    />
-
-                  ) : (
-
-                    <input
-                      value={
-                        answers[q.id] || ""
-                      }
-                      onChange={e=>
-                        updateAnswer(
-                          q.id,
-                          e.target.value
-                        )
-                      }
-                    />
-
-                  )}
-
-                </div>
-
-              ))}
-
-
-              {editing && canEdit && (
-
-                <button>
-                  Edit Category
-                </button>
-
-              )}
-
-            </section>
-
-          ))}
-
-
-          <div className="workflow-actions">
-
-            <button
-              onClick={()=>save("draft")}
-            >
-              Save Draft
-            </button>
-
-
-            <button
-              onClick={()=>save("submitted")}
-            >
-              Submit Audit
-            </button>
-
-          </div>
-
-
-        </div>
-
-      )}
-
-
-
-      {editing && canEdit && (
-
-        <div className="workflow-editor">
-
-          <h2>
-            Template Editor
-          </h2>
-
-          <p>
-            Add/remove categories and questions here.
-          </p>
-
-
-          <button>
-            Add Category
-          </button>
-
-
-          <button>
-            Add Question
-          </button>
-
-        </div>
-
-      )}
-
-    </div>
-  );
+cd /d C:\Windows\System32\propergeeks-rebuild\client
+
+powershell -ExecutionPolicy Bypass -Command "$code=@'
+import React, {useEffect,useState} from 'react';
+
+export default function Workflow(){
+const [templates,setTemplates]=useState([]);
+const [selected,setSelected]=useState(null);
+const [answers,setAnswers]=useState({});
+const [canEdit,setCanEdit]=useState(false);
+
+async function api(url,opt={}){
+ const r=await fetch('/api'+url,{
+  credentials:'include',
+  headers:{'Content-Type':'application/json'},
+  ...opt
+ });
+ if(!r.ok) throw new Error(await r.text());
+ return r.json();
 }
+
+useEffect(()=>{
+ api('/workflows').then(x=>{
+  setTemplates(x.templates||[]);
+  setCanEdit((x.permissions||[]).includes('view_audits'));
+ });
+},[]);
+
+async function save(status){
+ await api('/workflows/run',{
+  method:'POST',
+  body:JSON.stringify({
+   template_id:selected.id,
+   answers,
+   status
+  })
+ });
+ alert(status==='submitted'?'Audit submitted':'Draft saved');
+}
+
+return <div className='workflow-page'>
+<h1>Workflows</h1>
+
+{!selected && templates.map(t=>
+<button key={t.id} onClick={()=>setSelected(t)}>
+{t.name}
+</button>
+)}
+
+{selected &&
+<div>
+<button onClick={()=>setSelected(null)}>Back</button>
+
+<h2>{selected.name}</h2>
+
+{selected.categories?.map(c=>
+<section key={c.id}>
+<h3>{c.name}</h3>
+
+{c.questions?.map(q=>
+<div key={q.id}>
+<label>{q.label}</label>
+<input
+value={answers[q.id]||''}
+onChange={e=>setAnswers({
+ ...answers,
+ [q.id]:e.target.value
+})}
+/>
+</div>
+)}
+
+{canEdit &&
+<button>Edit Category</button>}
+</section>
+)}
+
+<button onClick={()=>save('draft')}>
+Save Draft
+</button>
+
+<button onClick={()=>save('submitted')}>
+Submit Audit
+</button>
+
+{canEdit &&
+<div>
+<h3>Workflow Editor</h3>
+<button>Add Category</button>
+<button>Add Question</button>
+</div>
+}
+
+</div>}
+</div>
+}
+'@; Set-Content .\src\Workflow.jsx $code"
+
+npm run build
+
+cd ..
+
+pm2 restart propergeeks-api
+pm2 restart propergeeks-web
+
+pm2 save
