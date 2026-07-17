@@ -1,19 +1,278 @@
-cd /d C:\Windows\System32\propergeeks-rebuild\server
+import React, { useEffect, useState } from "react";
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$p='server.js'; $s=Get-Content $p -Raw; Copy-Item $p ($p+'.bak') -Force; $s=[regex]::Replace($s,'function makeRef[\s\S]*?app\.get\(\"/api/health\"','app.get(\"/api/health\"'); $fn=@'
-function makeRef(prefix){
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const letters = Array.from({length:3}, function(){
-    return chars[Math.floor(Math.random() * chars.length)];
-  }).join("");
-  const nums = String(Math.floor(Math.random() * 900) + 100);
-  return String(prefix || "REF") + "-" + letters + nums;
+const API = "/api";
+
+export default function Workflow() {
+  const [templates, setTemplates] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [answers, setAnswers] = useState({});
+  const [editing, setEditing] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  async function request(url, options = {}) {
+    const r = await fetch(API + url, {
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+      },
+      ...options
+    });
+
+    if (!r.ok) {
+      throw new Error(await r.text());
+    }
+
+    return r.json();
+  }
+
+  async function load() {
+    setLoading(true);
+
+    try {
+      const data = await request("/workflows");
+
+      setTemplates(data.templates || []);
+      setCanEdit(
+        data.permissions?.includes("view_audits") || false
+      );
+
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  function updateAnswer(id, value) {
+    setAnswers(prev => ({
+      ...prev,
+      [id]: value
+    }));
+  }
+
+  async function save(status = "draft") {
+
+    await request("/workflows/run", {
+      method:"POST",
+      body:JSON.stringify({
+        template_id:selected.id,
+        answers,
+        status
+      })
+    });
+
+    alert(
+      status === "submitted"
+      ? "Audit submitted"
+      : "Draft saved"
+    );
+  }
+
+
+  if (loading)
+    return <div>Loading workflows...</div>;
+
+
+  return (
+    <div className="workflow-page">
+
+      <div className="workflow-header">
+        <h1>Workflows</h1>
+
+        {canEdit && (
+          <button
+            onClick={()=>setEditing(!editing)}
+          >
+            {editing
+              ? "Exit Editor"
+              : "Edit Workflows"}
+          </button>
+        )}
+      </div>
+
+
+      {!selected && (
+
+        <div className="workflow-list">
+
+          {templates.map(t=>(
+
+            <button
+              key={t.id}
+              className="workflow-card"
+              onClick={()=>setSelected(t)}
+            >
+              <h2>{t.name}</h2>
+              <p>{t.description}</p>
+              <span>
+                Start Audit
+              </span>
+            </button>
+
+          ))}
+
+        </div>
+
+      )}
+
+
+
+      {selected && (
+
+        <div>
+
+          <button
+            onClick={()=>{
+              setSelected(null);
+              setAnswers({});
+            }}
+          >
+            Back
+          </button>
+
+
+          <h2>{selected.name}</h2>
+
+
+          {selected.categories?.map(category=>(
+
+            <section
+              key={category.id}
+              className="workflow-category"
+            >
+
+              <h3>
+                {category.name}
+              </h3>
+
+
+              {category.questions?.map(q=>(
+
+                <div
+                  key={q.id}
+                  className="workflow-question"
+                >
+
+                  <label>
+                    {q.label}
+                  </label>
+
+
+                  {q.type==="textarea" ? (
+
+                    <textarea
+                      value={answers[q.id] || ""}
+                      onChange={e=>
+                        updateAnswer(
+                          q.id,
+                          e.target.value
+                        )
+                      }
+                    />
+
+                  ) : q.type==="boolean" ? (
+
+                    <input
+                      type="checkbox"
+                      checked={
+                        answers[q.id] || false
+                      }
+                      onChange={e=>
+                        updateAnswer(
+                          q.id,
+                          e.target.checked
+                        )
+                      }
+                    />
+
+                  ) : (
+
+                    <input
+                      value={
+                        answers[q.id] || ""
+                      }
+                      onChange={e=>
+                        updateAnswer(
+                          q.id,
+                          e.target.value
+                        )
+                      }
+                    />
+
+                  )}
+
+                </div>
+
+              ))}
+
+
+              {editing && canEdit && (
+
+                <button>
+                  Edit Category
+                </button>
+
+              )}
+
+            </section>
+
+          ))}
+
+
+          <div className="workflow-actions">
+
+            <button
+              onClick={()=>save("draft")}
+            >
+              Save Draft
+            </button>
+
+
+            <button
+              onClick={()=>save("submitted")}
+            >
+              Submit Audit
+            </button>
+
+          </div>
+
+
+        </div>
+
+      )}
+
+
+
+      {editing && canEdit && (
+
+        <div className="workflow-editor">
+
+          <h2>
+            Template Editor
+          </h2>
+
+          <p>
+            Add/remove categories and questions here.
+          </p>
+
+
+          <button>
+            Add Category
+          </button>
+
+
+          <button>
+            Add Question
+          </button>
+
+        </div>
+
+      )}
+
+    </div>
+  );
 }
-
-'@; $s=$s.Replace('app.get(\"/api/health\"',$fn+'app.get(\"/api/health\"'); Set-Content -Encoding UTF8 $p $s"
-
-node -c server.js
-
-cd /d C:\Windows\System32\propergeeks-rebuild
-
-npx concurrently "cd server && npm start" "cd client && npm start -- --host 0.0.0.0 --port 3002"
